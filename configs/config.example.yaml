@@ -1,0 +1,217 @@
+# ============================================================
+# EdgeTunnel BestSub 配置文件示例
+# 复制为 configs/config.yaml 后再填写你的真实 Worker 信息。
+# ============================================================
+
+# ----------------------------------------------------------
+# server: Web UI 服务配置
+# ----------------------------------------------------------
+server:
+    # 本地 Web UI 监听地址（IP:端口）
+    # 默认值: "127.0.0.1:8788"
+    listen: "127.0.0.1:8788"
+
+# ----------------------------------------------------------
+# worker: EdgeTunnel Worker 连接配置
+# ----------------------------------------------------------
+worker:
+    # EdgeTunnel Worker 地址，末尾不要带斜杠
+    base_url: "https://your-worker.workers.dev"
+    # Worker 管理员密码，用于登录 Worker 后台和推送 ADD.txt
+    # 真实值只写入 configs/config.yaml，不要提交到版本控制
+    password: "your_password"
+    # 推送 ADD.txt 时使用的 User-Agent 头
+    # 默认值: "bestsub-go/0.1"
+    user_agent: "bestsub-go/0.1"
+
+# ----------------------------------------------------------
+# probe: IP 优选探测配置
+# ----------------------------------------------------------
+probe:
+    # target: 探测目标配置
+    target:
+        # 探测模式。当前推荐 "worker"，按你的 Worker 域名做真实 HTTPS 访问探测
+        mode: "worker"
+        # 探测 URL，建议指向 Worker 下的轻量资源（如 robots.txt），减少流量消耗
+        url: "https://your-worker.workers.dev/robots.txt"
+        # HTTP 请求中的 Host 头，通常与 Worker 域名一致
+        host: "your-worker.workers.dev"
+        # TLS 握手时使用的 SNI（Server Name Indication），通常与 Host 一致
+        sni: "your-worker.workers.dev"
+        # HTTP 请求方法。HEAD 最轻量，不传输 body
+        # 默认值: "HEAD"
+        method: "HEAD"
+        # 这些 HTTP 状态码会被视为探测成功（Worker 可能返回非 200 但仍表示可达）
+        # 默认值: [200, 204, 301, 302, 403, 404]
+        expected_status: [200, 204, 301, 302, 403, 404]
+
+    # preflight: 测速前环境预检配置
+    # 主要用于检测系统代理是否开启，避免代理干扰测速结果
+    preflight:
+        # 是否启用预检
+        enabled: true
+        # 跳过抽样低延迟探测，只检测系统代理是否开启
+        # 设为 true 更适合日常使用，减少预检耗时
+        disable_sample_probe: true
+        # 抽样探测数量；仅在 disable_sample_probe 为 false 时生效
+        # 从候选 IP 中随机抽取若干个做快速探测，判断延迟是否异常
+        # 默认值: 8
+        sample_size: 8
+        # 检测到异常低延迟时是否阻止测速继续执行
+        # 异常低延迟通常意味着流量经过了本地代理
+        block_on_low_latency: true
+        # 异常低延迟阈值，单位毫秒
+        # 低于此值的延迟会被判定为异常（正常跨境延迟不可能这么低）
+        # 默认值: 20
+        low_latency_threshold_ms: 20
+
+    # 是否启用 IPv4 探测
+    ipv4: true
+    # 是否启用 IPv6 探测
+    ipv6: false
+
+    # 国家/地区过滤（ISO 3166-1 alpha-2 代码，如 "JP", "US", "HK"）
+    # 留空表示不过滤，接受所有地区的 IP
+    # 也可以在 Web UI 中选择后自动保存到此处
+    countries: []
+    
+    # 是否强制验证 IP 在 GeoIP 数据库中的注册归属地
+    # 默认关闭：Cloudflare Anycast 的注册地和实际访问机房经常不一致，
+    # 关闭后不需要 GeoLite2-Country.mmdb 文件。
+    # 如需开启，请自行下载 MaxMind GeoLite2 Country 数据库并放到 geoip_db_path 指定位置。
+    require_geoip_match: false
+    # GeoLite2 Country 数据库文件路径（相对路径或绝对路径）
+    # 仅在 require_geoip_match 为 true 时需要
+    geoip_db_path: ""
+
+    # Cloudflare 支持的 HTTPS 端口列表
+    # 对于没有指定端口的 IP/CIDR，会在这些端口中随机选择进行探测
+    # 默认值: [443, 2053, 2083, 2087, 2096, 8443]
+    ports: [443, 2053, 2083, 2087, 2096, 8443]
+
+    # 从 sources 中加载的候选 IP 数量上限
+    # 候选数量越大，覆盖面越广但耗时越长
+    # 稳定模式会在运行时自动放大该值
+    # 默认值: 600
+    candidate_limit: 600
+    # 最终保留的优选 IP 数量（写入 ADD.txt 的条目数）
+    # 默认值: 30
+    keep: 30
+    # 单个 IP 探测超时时间，单位毫秒
+    # 超过此时间未响应则判定为失败
+    # 默认值: 2500
+    timeout_ms: 2500
+    # 并发探测数量（同时发起的连接数）
+    # 值越大速度越快，但对网络和系统资源要求越高
+    # 默认值: 120
+    concurrency: 120
+    # 每个 IPv4 /24 子网最多保留的结果数量
+    # 避免结果集中在同一网段，提高多样性
+    # 默认值: 2
+    per_cidr24_limit: 2
+
+# ----------------------------------------------------------
+# sources: IP 候选源配置
+# 支持 "remote"（远程 URL）和 "file"（本地文件）两种类型
+# weight: 权重值，数值越高在候选排序中优先级越高
+# ----------------------------------------------------------
+sources:
+    # 远程源：Cloudflare 官方 IPv4 地址段（稳定性最好，直连基本不会挂）
+    - type: "remote"
+      name: "cf-ipv4"
+      url: "https://www.cloudflare.com/ips-v4"
+      path: ""
+      weight: 130
+
+    # 远程源：cmliu 维护的 Cloudflare CIDR 列表
+    - type: "remote"
+      name: "cmliu-cf-cidr"
+      url: "https://raw.githubusercontent.com/cmliu/cmliu/main/CF-CIDR.txt"
+      path: ""
+      weight: 120
+
+    # 远程源：XIU2 CloudflareSpeedTest 项目的 IPv4 列表
+    - type: "remote"
+      name: "xiu2-ipv4"
+      url: "https://raw.githubusercontent.com/XIU2/CloudflareSpeedTest/master/ip.txt"
+      path: ""
+      weight: 100
+
+    # 远程源：Cloudflare 官方 IPv6 地址段
+    - type: "remote"
+      name: "cf-ipv6"
+      url: "https://www.cloudflare.com/ips-v6"
+      path: ""
+      weight: 80
+
+    # 本地文件源：自定义种子 IP 列表
+    # 支持格式：纯 IP、IP:端口、CIDR 段，每行一个
+    # 可用 # 号添加备注，如 1.2.3.4#我的IP
+    - type: "file"
+      name: "local-seeds"
+      url: ""
+      path: "seeds.txt"
+      weight: 200
+
+# ----------------------------------------------------------
+# output: 测速结果输出配置
+# ----------------------------------------------------------
+output:
+    # 测速结果输出文件路径（相对路径或绝对路径）
+    # 默认值: "ADD.txt"
+    path: "ADD.txt"
+    # ADD.txt 每行备注前缀，最终格式为: IP:端口#前缀-序号
+    # 默认值: "IP 官方优选"
+    remark_prefix: "IP 官方优选"
+    # 设为 true 时只生成 ADD.txt 但不推送到 Worker
+    # 适合调试或仅需本地使用的场景
+    dry_run: false
+
+# ----------------------------------------------------------
+# clash.proxyip_auto: 反代 IP 优选配置
+# 保留 clash 这一层是为了兼容旧配置，工具已移除本地 Clash 配置生成功能
+# ----------------------------------------------------------
+clash:
+    # proxyip_auto: 单独优选反代 IP
+    # 从公共列表拉取指定国家的反代 IP，经过 Worker 实测后选出可用结果
+    proxyip_auto:
+        # 是否启用反代 IP 优选按钮
+        enabled: true
+        # 目标国家代码（ISO 3166-1 alpha-2，单选）
+        # 例如: "JP"（日本）, "US"（美国）, "HK"（香港）, "SG"（新加坡）
+        country: "JP"
+        # 最多保留几个可用的反代 IP
+        # 默认值: 8
+        limit: 8
+        # GeoIP 过滤后最多随机抽取多少个候选交给 Worker 实测
+        # 默认值: 50
+        max_candidates: 50
+        # 反代 IP 列表源 URL
+        # 格式要求：每行 IP:端口#国家代码
+        # 默认值: "https://zip.cm.edu.kg/all.txt"
+        source_url: "https://zip.cm.edu.kg/all.txt"
+        # 旧版延迟检测 API 地址，%s 会被替换为候选 IP
+        # worker_verify.enabled 为 true 时会直接通过 Worker 实测，不依赖此接口
+        # 需要返回 JSON: {"success": true/false, "responseTime": 123}
+        # 默认值: "https://api.090227.xyz/check?proxyip=%s"
+        check_api: "https://api.090227.xyz/check?proxyip=%s"
+        # Worker 实测并发数量
+        # 默认值: 2
+        concurrency: 2
+        # 是否要求反代 IP 的 GeoIP 注册地与目标国家一致
+        # 与 probe.require_geoip_match 类似，关闭可提高命中率
+        require_geoip_match: false
+        # GeoIP 数据库路径（仅 require_geoip_match 为 true 时需要）
+        # 留空时自动使用 probe.geoip_db_path 的值
+        geoip_db_path: "GeoLite2-Country.mmdb"
+        # worker_verify: 通过 Worker 实际发起请求验证反代 IP 的出口国家
+        # 比 GeoIP 数据库更准确，但需要 Worker 支持 /admin/proxyip-test 接口
+        worker_verify:
+            # 是否启用 Worker 出口验证
+            enabled: true
+            # Worker 验证时访问的目标 URL，用于获取出口 IP 信息
+            # 默认值: "https://cloudflare.com/cdn-cgi/trace"
+            url: "https://cloudflare.com/cdn-cgi/trace"
+            # 旧版最多检查多少个测速结果；新逻辑请使用 proxyip_auto.max_candidates
+            # 默认值: limit * 3
+            max_checks: 24

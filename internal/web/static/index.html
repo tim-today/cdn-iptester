@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CDN-IPtester 工具箱</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/lucide.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">CIT</div>
+        <div>
+          <h1>CDN-IPtester</h1>
+          <p>Cloudflare 优选工具</p>
+        </div>
+      </div>
+      <nav class="nav-menu" aria-label="功能菜单">
+        <button class="nav-item active" data-view="ip"><i data-lucide="radar"></i><span>IP 优选</span></button>
+        <button class="nav-item" data-view="ipsources"><i data-lucide="globe"></i><span>IP段来源</span></button>
+        <button class="nav-item" data-view="proxy"><i data-lucide="network"></i><span>反代 IP</span></button>
+        <button class="nav-item" data-view="settings"><i data-lucide="settings-2"></i><span>系统配置</span></button>
+      </nav>
+      <div class="side-status">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText">就绪</span>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="loader"></div>
+        <span id="loadingText">任务运行中...</span>
+      </div>
+
+      <section class="view active" id="view-ip">
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">IP 优选</p>
+            <h2>测速并筛选可用入口 IP</h2>
+          </div>
+          <div class="header-actions">
+            <button id="runBtn"><i data-lucide="play"></i>开始测速</button>
+            <button id="copyAddBtn" class="secondary"><i data-lucide="copy"></i>复制结果</button>
+            <button id="pushBtn" class="secondary"><i data-lucide="cloud-upload"></i>同步到 CF</button>
+          </div>
+        </header>
+
+        <div class="grid two">
+          <section class="panel">
+            <div class="section-head">
+              <h3>测速模式</h3>
+            </div>
+            <div class="segmented" id="modeToggle">
+              <button type="button" class="segment selected" data-mode="quick">快速</button>
+              <button type="button" class="segment" data-mode="stable">稳定</button>
+            </div>
+
+            <div class="section-head" style="margin-top: 15px;">
+              <h3>IP 段来源</h3>
+            </div>
+            <div class="dropdown-multiselect">
+              <button type="button" class="dropdown-trigger" id="ipSourceSelectTrigger">
+                <span id="ipSourceSelectText">选择 IP 段来源</span>
+                <i data-lucide="chevron-down"></i>
+              </button>
+              <div class="dropdown-menu hidden" id="ipSourceSelectMenu"></div>
+            </div>
+
+            <div class="progress-system" id="progressContainer" style="margin-top: 15px;">
+              <div class="progress-line">
+                <span id="progressStatus">等待开始</span>
+                <span id="progressPercent">0%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="progressBarFill"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h3>地区筛选</h3>
+              <button id="clearCountryBtn" class="ghost">重置</button>
+            </div>
+            <div id="countrySelect" class="country-picker"></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="section-head">
+            <h3>优选结果</h3>
+            <a href="/api/results/cdn-iptester.txt" target="_blank">打开 CDN-IPtester.txt <i data-lucide="external-link"></i></a>
+          </div>
+          <textarea id="addText" class="result-box" readonly placeholder="测速完成后，这里会显示可复制的 CDN-IPtester.txt 内容"></textarea>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>节点地址</th>
+                  <th>端口</th>
+                  <th>延迟</th>
+                  <th>机房</th>
+                  <th>地区</th>
+                  <th>状态</th>
+                  <th>来源</th>
+                </tr>
+              </thead>
+              <tbody id="resultRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-ipsources">
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">IP段来源</p>
+            <h2>管理并更新本地的 IP 网段数据</h2>
+          </div>
+          <div class="header-actions">
+            <button id="addIPSourceBtn"><i data-lucide="plus"></i>添加来源</button>
+          </div>
+        </header>
+
+        <div class="ipsources-grid" id="ipSourceCards"></div>
+      </section>
+
+      <section class="view" id="view-proxy">
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">反代 IP</p>
+            <h2>按国家优选 PROXYIP</h2>
+          </div>
+          <div class="header-actions">
+            <button id="proxyipFetchBtn"><i data-lucide="refresh-cw"></i>开始优选</button>
+            <button id="copyProxyBtn" class="secondary"><i data-lucide="copy"></i>复制结果</button>
+            <button id="proxyPushBtn" class="secondary"><i data-lucide="cloud-upload"></i>同步到 CF</button>
+          </div>
+        </header>
+
+        <section class="panel">
+          <div class="form-grid compact">
+            <label>
+              <span>国家</span>
+              <select id="proxyCountrySelect"></select>
+            </label>
+            <label>
+              <span>保留数量</span>
+              <input id="proxyLimitView" type="number" readonly>
+            </label>
+            <label>
+              <span>候选抽样</span>
+              <input id="proxyCandidatesView" type="number" readonly>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h3>PROXYIP 结果</h3>
+            <span id="proxyipCount" class="muted">暂无结果</span>
+          </div>
+          <textarea id="proxyText" class="result-box" readonly placeholder="反代 IP 优选完成后，这里会显示可复制的 PROXYIP-tester 内容"></textarea>
+          <div id="proxyipSummary" class="proxyip-list"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-settings">
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">系统配置</p>
+            <h2>可视化编辑 config.yaml</h2>
+          </div>
+          <div class="header-actions">
+            <button id="saveConfigBtn"><i data-lucide="save"></i>保存配置</button>
+            <button id="checkBtn" class="secondary"><i data-lucide="shield-check"></i>环境检测</button>
+          </div>
+        </header>
+
+        <form id="configForm" class="settings-stack">
+          <section class="panel">
+            <h3>Worker 配置</h3>
+            <div class="form-grid">
+              <label><span>Worker 地址</span><input name="worker.base_url" placeholder="https://your-worker.workers.dev"></label>
+              <label><span>Worker 密码</span><input name="worker.password" type="password" placeholder="用于同步到 CF"></label>
+            </div>
+          </section>
+
+          <button type="button" class="secondary" id="toggleAdvancedBtn" style="margin: 5px 0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;"><i data-lucide="chevron-down"></i>高级配置</button>
+
+          <div id="advancedSettings" class="settings-stack hidden" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+            <section class="panel">
+              <h3>常规高级</h3>
+              <div class="form-grid">
+                <label><span>监听地址</span><input name="server.listen" placeholder="127.0.0.1:8788"></label>
+                <label><span>User-Agent</span><input name="worker.user_agent" placeholder="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"></label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h3>测速</h3>
+              <div class="form-grid">
+                <label><span>测速 URL</span><input name="probe.target.url" placeholder="https://your-worker.workers.dev/robots.txt"></label>
+                <label><span>Host</span><input name="probe.target.host" placeholder="your-worker.workers.dev"></label>
+                <label><span>SNI</span><input name="probe.target.sni" placeholder="your-worker.workers.dev"></label>
+                <label><span>方法</span><select name="probe.target.method"><option>HEAD</option><option>GET</option></select></label>
+                <label><span>端口列表</span><input name="probe.ports" placeholder="443,2053,2083,2087,2096,8443"></label>
+                <label><span>成功状态码</span><input name="probe.target.expected_status" placeholder="200,204,301,302,403,404"></label>
+                <label><span>候选上限</span><input name="probe.candidate_limit" type="number" min="1"></label>
+                <label><span>保留数量</span><input name="probe.keep" type="number" min="1"></label>
+                <label><span>超时 ms</span><input name="probe.timeout_ms" type="number" min="500"></label>
+                <label><span>并发</span><input name="probe.concurrency" type="number" min="1"></label>
+                <label><span>每段限制</span><input name="probe.per_cidr24_limit" type="number" min="1"></label>
+                <label><span>GeoIP DB</span><input name="probe.geoip_db_path" placeholder="GeoLite2-Country.mmdb"></label>
+              </div>
+              <div class="checks">
+                <label><input name="probe.ipv4" type="checkbox"> IPv4</label>
+                <label><input name="probe.ipv6" type="checkbox"> IPv6</label>
+                <label><input name="probe.require_geoip_match" type="checkbox"> 要求 GeoIP 匹配</label>
+                <label><input name="probe.preflight.enabled" type="checkbox"> 启用预检</label>
+                <label><input name="probe.preflight.disable_sample_probe" type="checkbox"> 跳过抽样预检</label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h3>反代 IP</h3>
+              <div class="form-grid">
+                <label><span>国家</span><select name="clash.proxyip_auto.country" id="configProxyCountry"></select></label>
+                <label><span>保留数量</span><input name="clash.proxyip_auto.limit" type="number" min="1"></label>
+                <label><span>候选抽样</span><input name="clash.proxyip_auto.max_candidates" type="number" min="1"></label>
+                <label><span>来源 URL</span><input name="clash.proxyip_auto.source_url"></label>
+                <label><span>Check API</span><input name="clash.proxyip_auto.check_api"></label>
+                <label><span>并发</span><input name="clash.proxyip_auto.concurrency" type="number" min="1"></label>
+                <label><span>GeoIP DB</span><input name="clash.proxyip_auto.geoip_db_path"></label>
+                <label><span>Worker 验证 URL</span><input name="clash.proxyip_auto.worker_verify.url"></label>
+                <label><span>Worker 最大检查</span><input name="clash.proxyip_auto.worker_verify.max_checks" type="number" min="1"></label>
+              </div>
+              <div class="checks">
+                <label><input name="clash.proxyip_auto.enabled" type="checkbox"> 启用反代优选</label>
+                <label><input name="clash.proxyip_auto.require_geoip_match" type="checkbox"> 反代 GeoIP 匹配</label>
+                <label><input name="clash.proxyip_auto.worker_verify.enabled" type="checkbox"> Worker 真实出口验证</label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h3>输出与来源</h3>
+              <div class="form-grid">
+                <label><span>输出文件</span><input name="output.path" placeholder="CDN-IPtester.txt"></label>
+                <label><span>备注前缀</span><input name="output.remark_prefix" placeholder="IP 官方优选"></label>
+              </div>
+              <div class="checks">
+                <label><input name="output.dry_run" type="checkbox"> Dry run</label>
+              </div>
+            </section>
+          </div>
+        </form>
+
+        <section class="panel env-panel" id="envPanel">
+          <div class="section-head">
+            <h3>环境预检</h3>
+            <span id="envSummary" class="muted">尚未执行检测</span>
+          </div>
+          <ul id="envChecks" class="check-list"></ul>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-icon" id="modalIcon"></div>
+      <h3 id="modalTitle">提示</h3>
+      <p id="modalMessage"></p>
+      <div class="modal-actions">
+        <button id="modalOkBtn">好</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="previewModalOverlay" class="modal-overlay hidden">
+    <div class="modal-card preview-card">
+      <div class="modal-header">
+        <h3 id="previewModalTitle">预览 IP 段</h3>
+        <button id="closePreviewBtn" class="secondary ghost"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <textarea id="previewTextarea" class="preview-box" readonly></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div id="editSourceModalOverlay" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="editSourceModalTitle">添加 IP 段来源</h3>
+        <button id="closeEditSourceBtn" class="secondary ghost"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body settings-stack" style="margin-top: 10px; display: flex; flex-direction: column; gap: 12px;">
+        <input type="hidden" id="editSourceId">
+        <div class="form-grid" style="grid-template-columns: 1fr; gap: 12px;">
+          <label>
+            <span>来源名称</span>
+            <input type="text" id="editSourceName" placeholder="例如：官方v4备用">
+          </label>
+          <label>
+            <span>URL 地址</span>
+            <input type="text" id="editSourceUrl" placeholder="https://example.com/ips-v4">
+          </label>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top: 15px;">
+        <button id="saveSourceBtn">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
